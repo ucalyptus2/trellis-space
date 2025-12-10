@@ -4,8 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from ..trainers.utils import str_to_dtype
-from ..modules.utils import convert_module_to, manual_cast
+from ..modules.utils import convert_module_to, manual_cast, str_to_dtype
 from ..modules.transformer import AbsolutePositionEmbedder, ModulatedTransformerCrossBlock
 from ..modules.attention import RotaryPositionEmbedder
 
