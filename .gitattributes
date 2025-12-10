@@ -58,3 +58,4 @@ assets/example_images/cdf996a6cc218918eeb90209891ce306a230e6d9cca2a3d9bbb37c6d7b
 assets/example_images/ee8ecf658fde9c58830c021b2e30d0d5e7e492ef52febe7192a6c74fbf1b0472.webp filter=lfs diff=lfs merge=lfs -text
 assets/example_images/f5332118a0cda9cd13fe13d4be2b00437e702d1f9af51ebb6b75219a572a6ce9.webp filter=lfs diff=lfs merge=lfs -text
 assets/example_images/f8a7eafe26a4f3ebd26a9e7d0289e4a40b5a93e9234e94ec3e1071c352acc65a.webp filter=lfs diff=lfs merge=lfs -text
+assets/hdri/forest.exr filter=lfs diff=lfs merge=lfs -text
