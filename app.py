@@ -273,8 +273,8 @@ with gr.Blocks(delete_cache=(600, 600)) as demo:
         with gr.Column(scale=1, min_width=172):
             examples = gr.Examples(
                 examples=[
-                    f'assets/example_image/{image}'
-                    for image in os.listdir("assets/example_image")
+                    f'assets/example_images/{image}'
+                    for image in os.listdir("assets/example_images")
                 ],
                 inputs=[image_prompt],
                 fn=preprocess_image,
