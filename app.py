@@ -33,6 +33,7 @@ def end_session(req: gr.Request):
     shutil.rmtree(user_dir)
 
 
+@spaces.GPU()
 def preprocess_image(image: Image.Image) -> Image.Image:
     """
     Preprocess the input image.
@@ -181,6 +182,8 @@ def extract_glb(
         aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
         decimation_target=decimation_target,
         texture_size=texture_size,
+        remesh=True,
+        remesh_band=1,
         use_tqdm=True,
     )[0]
     now = datetime.now()
