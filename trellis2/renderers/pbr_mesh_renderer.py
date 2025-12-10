@@ -19,7 +19,7 @@ def cube_to_dir(s, x, y):
 
 def latlong_to_cubemap(latlong_map, res):
     if 'dr' not in globals():
-            import nvdiffrast.torch as dr
+        import nvdiffrast.torch as dr
     cubemap = torch.zeros(6, res[0], res[1], latlong_map.shape[-1], dtype=torch.float32, device='cuda')
     for s in range(6):
         gy, gx = torch.meshgrid(torch.linspace(-1.0 + 1.0 / res[0], 1.0 - 1.0 / res[0], res[0], device='cuda'), 
@@ -37,11 +37,17 @@ def latlong_to_cubemap(latlong_map, res):
 
 class EnvMap:
     def __init__(self, image: torch.Tensor):
-        if 'EnvironmentLight' not in globals():
-            from nvdiffrec_render.light import EnvironmentLight
-        cubemap = latlong_to_cubemap(image, [512, 512])
-        self._backend = EnvironmentLight(cubemap)
-        self._backend.build_mips()
+        self.image = image
+        
+    @property
+    def _backend(self):
+        if not hasattr(self, '_nvdiffrec_envlight'):
+            if 'EnvironmentLight' not in globals():
+                from nvdiffrec_render.light import EnvironmentLight
+            cubemap = latlong_to_cubemap(self.image, [512, 512])
+            self._nvdiffrec_envlight = EnvironmentLight(cubemap)
+            self._nvdiffrec_envlight.build_mips()
+        return self._nvdiffrec_envlight
 
     def shade(self, gb_pos, gb_normal, kd, ks, view_pos, specular=True):
         return self._backend.shade(gb_pos, gb_normal, kd, ks, view_pos, specular)
