@@ -5,8 +5,8 @@ import numpy as np
 from PIL import Image
 from .base import Pipeline
 from . import samplers, rembg
-from .. import trainers
-from ..modules import sparse as sp
+from ..modules.sparse import SparseTensor
+from ..modules import image_feature_extractor
 from ..representations import Mesh, MeshWithVoxel
 
 
@@ -24,7 +24,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         tex_slat_sampler_params (dict): The parameters for the texture latent sampler.
         shape_slat_normalization (dict): The normalization parameters for the structured latent.
         tex_slat_normalization (dict): The normalization parameters for the texture latent.
-        image_cond_model (trainers.Trainer): The image conditioning model.
+        image_cond_model (Callable): The image conditioning model.
         rembg_model (Callable): The model for removing background.
         low_vram (bool): Whether to use low-VRAM mode.
     """
@@ -92,7 +92,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         new_pipeline.shape_slat_normalization = args['shape_slat_normalization']
         new_pipeline.tex_slat_normalization = args['tex_slat_normalization']
 
-        new_pipeline.image_cond_model = getattr(trainers, args['image_cond_model']['name'])(**args['image_cond_model']['args'])
+        new_pipeline.image_cond_model = getattr(image_feature_extractor, args['image_cond_model']['name'])(**args['image_cond_model']['args'])
         new_pipeline.rembg_model = getattr(rembg, args['rembg_model']['name'])(**args['rembg_model']['args'])
         
         new_pipeline.low_vram = args.get('low_vram', True)
@@ -230,7 +230,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         flow_model,
         coords: torch.Tensor,
         sampler_params: dict = {},
-    ) -> sp.SparseTensor:
+    ) -> SparseTensor:
         """
         Sample structured latent with the given conditioning.
         
@@ -240,7 +240,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             sampler_params (dict): Additional parameters for the sampler.
         """
         # Sample structured latent
-        noise = sp.SparseTensor(
+        noise = SparseTensor(
             feats=torch.randn(coords.shape[0], flow_model.in_channels).to(self.device),
             coords=coords,
         )
@@ -275,7 +275,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         coords: torch.Tensor,
         sampler_params: dict = {},
         max_num_tokens: int = 49152,
-    ) -> sp.SparseTensor:
+    ) -> SparseTensor:
         """
         Sample structured latent with the given conditioning.
         
@@ -285,7 +285,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             sampler_params (dict): Additional parameters for the sampler.
         """
         # LR
-        noise = sp.SparseTensor(
+        noise = SparseTensor(
             feats=torch.randn(coords.shape[0], flow_model_lr.in_channels).to(self.device),
             coords=coords,
         )
@@ -329,7 +329,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             hr_resolution -= 128
         
         # Sample structured latent
-        noise = sp.SparseTensor(
+        noise = SparseTensor(
             feats=torch.randn(coords.shape[0], flow_model.in_channels).to(self.device),
             coords=coords,
         )
@@ -355,19 +355,19 @@ class Trellis2ImageTo3DPipeline(Pipeline):
 
     def decode_shape_slat(
         self,
-        slat: sp.SparseTensor,
+        slat: SparseTensor,
         resolution: int,
-    ) -> Tuple[List[Mesh], List[sp.SparseTensor]]:
+    ) -> Tuple[List[Mesh], List[SparseTensor]]:
         """
         Decode the structured latent.
 
         Args:
-            slat (sp.SparseTensor): The structured latent.
+            slat (SparseTensor): The structured latent.
             formats (List[str]): The formats to decode the structured latent to.
 
         Returns:
             List[Mesh]: The decoded meshes.
-            List[sp.SparseTensor]: The decoded substructures.
+            List[SparseTensor]: The decoded substructures.
         """
         self.models['shape_slat_decoder'].set_resolution(resolution)
         if self.low_vram:
@@ -383,15 +383,15 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         self,
         cond: dict,
         flow_model,
-        shape_slat: sp.SparseTensor,
+        shape_slat: SparseTensor,
         sampler_params: dict = {},
-    ) -> sp.SparseTensor:
+    ) -> SparseTensor:
         """
         Sample structured latent with the given conditioning.
         
         Args:
             cond (dict): The conditioning information.
-            shape_slat (sp.SparseTensor): The structured latent for shape
+            shape_slat (SparseTensor): The structured latent for shape
             sampler_params (dict): Additional parameters for the sampler.
         """
         # Sample structured latent
@@ -424,18 +424,18 @@ class Trellis2ImageTo3DPipeline(Pipeline):
 
     def decode_tex_slat(
         self,
-        slat: sp.SparseTensor,
-        subs: List[sp.SparseTensor],
-    ) -> sp.SparseTensor:
+        slat: SparseTensor,
+        subs: List[SparseTensor],
+    ) -> SparseTensor:
         """
         Decode the structured latent.
 
         Args:
-            slat (sp.SparseTensor): The structured latent.
+            slat (SparseTensor): The structured latent.
             formats (List[str]): The formats to decode the structured latent to.
 
         Returns:
-            List[sp.SparseTensor]: The decoded texture voxels
+            List[SparseTensor]: The decoded texture voxels
         """
         if self.low_vram:
             self.models['tex_slat_decoder'].to(self.device)
@@ -447,16 +447,16 @@ class Trellis2ImageTo3DPipeline(Pipeline):
     @torch.no_grad()
     def decode_latent(
         self,
-        shape_slat: sp.SparseTensor,
-        tex_slat: sp.SparseTensor,
+        shape_slat: SparseTensor,
+        tex_slat: SparseTensor,
         resolution: int,
     ) -> List[MeshWithVoxel]:
         """
         Decode the latent codes.
 
         Args:
-            shape_slat (sp.SparseTensor): The structured latent for shape.
-            tex_slat (sp.SparseTensor): The structured latent for texture.
+            shape_slat (SparseTensor): The structured latent for shape.
+            tex_slat (SparseTensor): The structured latent for texture.
             resolution (int): The resolution of the output.
         """
         meshes, subs = self.decode_shape_slat(shape_slat, resolution)
