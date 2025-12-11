@@ -329,6 +329,7 @@ with gr.Blocks(delete_cache=(600, 600)) as demo:
 # Launch the Gradio app
 if __name__ == "__main__":
     pipeline = Trellis2ImageTo3DPipeline.from_pretrained('JeffreyXiang/TRELLIS.2-4B')
+    pipeline.low_vram = False
     pipeline.cuda()
     
     envmap = EnvMap(torch.tensor(
