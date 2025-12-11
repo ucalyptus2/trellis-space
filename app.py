@@ -138,8 +138,8 @@ def image_to_3d(
         },
         pipeline_type={
             "512": "512",
-            "1024": "512->1024",
-            "1536": "512->1536",
+            "1024": "1024_cascade",
+            "1536": "1536_cascade",
         }[resolution],
         return_latent=True,
     )
@@ -340,4 +340,4 @@ if __name__ == "__main__":
         dtype=torch.float32, device='cuda'
     ))
     
-    demo.launch(css=css, mcp_server=True)
+    demo.launch(css=css)
