@@ -76,7 +76,7 @@ def get_seed(randomize_seed: bool, seed: int) -> int:
     return np.random.randint(0, MAX_SEED) if randomize_seed else seed
 
 
-@spaces.GPU(duration=120)
+@spaces.GPU(duration=60)
 def image_to_3d(
     image: Image.Image,
     seed: int,
@@ -143,6 +143,7 @@ def image_to_3d(
         }[resolution],
         return_latent=True,
     )
+    print('DONE')
     images = render_utils.make_pbr_vis_frames(
         render_utils.render_snapshot(outputs[0], resolution=1024, r=2, fov=36, envmap=envmap),
         resolution=1024
@@ -152,7 +153,7 @@ def image_to_3d(
     return state, [Image.fromarray(image) for image in images]
 
 
-@spaces.GPU(duration=120)
+@spaces.GPU(duration=60)
 def extract_glb(
     state: dict,
     decimation_target: int,
