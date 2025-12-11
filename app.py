@@ -75,7 +75,7 @@ def get_seed(randomize_seed: bool, seed: int) -> int:
     return np.random.randint(0, MAX_SEED) if randomize_seed else seed
 
 
-@spaces.GPU(duration=60)
+@spaces.GPU(duration=120)
 def image_to_3d(
     image: Image.Image,
     seed: int,
@@ -188,7 +188,7 @@ def extract_glb(
         remesh=True,
         remesh_band=1,
         use_tqdm=True,
-    )[0]
+    )
     now = datetime.now()
     timestamp = now.strftime("%Y-%m-%dT%H%M%S") + f".{now.microsecond // 1000:03d}"
     os.makedirs(user_dir, exist_ok=True)
@@ -231,8 +231,8 @@ css = """
 with gr.Blocks(delete_cache=(600, 600)) as demo:
     gr.Markdown("""
     ## Image to 3D Asset with [TRELLIS.2](https://microsoft.github.io/trellis.2)
-    * Upload an image and click "Generate" to create a 3D asset.
-    * If you find the generated 3D asset satisfactory, click "Extract GLB" to extract the GLB file and download it.
+    * Upload an image (preferably with an alpha-masked foreground object) and click Generate to create a 3D asset.
+    * If you're satisfied with the result, click Extract GLB to export and download the generated GLB file.
     """)
     
     with gr.Row():
