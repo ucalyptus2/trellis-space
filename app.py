@@ -35,7 +35,6 @@ def end_session(req: gr.Request):
     shutil.rmtree(user_dir)
 
 
-@spaces.GPU()
 def preprocess_image(image: Image.Image) -> Image.Image:
     """
     Preprocess the input image.

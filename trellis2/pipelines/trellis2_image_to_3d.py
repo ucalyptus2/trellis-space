@@ -1,4 +1,5 @@
 from typing import *
+import spaces
 import torch
 import torch.nn as nn
 import numpy as np
@@ -113,6 +114,16 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             super().to(device)
             self.image_cond_model.to(device)
             self.rembg_model.to(device)
+    
+    @spaces.GPU()
+    def remove_background(self, input: Image.Image) -> Image.Image:
+        input = input.convert('RGB')
+        if self.low_vram:
+            self.rembg_model.to(self.device)
+        output = self.rembg_model(input)
+        if self.low_vram:
+            self.rembg_model.cpu()
+        return output
 
     def preprocess_image(self, input: Image.Image) -> Image.Image:
         """
@@ -131,12 +142,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if has_alpha:
             output = input
         else:
-            input = input.convert('RGB')
-            if self.low_vram:
-                self.rembg_model.to(self.device)
-            output = self.rembg_model(input)
-            if self.low_vram:
-                self.rembg_model.cpu()
+            output = self.remove_background(input)
         output_np = np.array(output)
         alpha = output_np[:, :, 3]
         bbox = np.argwhere(alpha > 0.8 * 255)
