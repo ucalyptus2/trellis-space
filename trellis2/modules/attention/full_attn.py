@@ -117,7 +117,8 @@ def scaled_dot_product_attention(*args, **kwargs):
             if num_all_args == 1:
                 out = flash_attn_3.flash_attn_qkvpacked_func(qkv)
             elif num_all_args == 2:
-                out = flash_attn_3.flash_attn_kvpacked_func(q, kv)
+                k, v = kv.unbind(dim=2)
+                out = flash_attn_3.flash_attn_func(q, k, v)
             elif num_all_args == 3:
                 out = flash_attn_3.flash_attn_func(q, k, v)
     elif config.BACKEND == 'sdpa':

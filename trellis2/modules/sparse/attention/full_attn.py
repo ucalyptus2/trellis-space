@@ -197,14 +197,20 @@ def sparse_scaled_dot_product_attention(*args, **kwargs):
         if 'flash_attn_3' not in globals():
             import flash_attn_interface as flash_attn_3
         cu_seqlens_q = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(q_seqlen), dim=0)]).int().to(device)
-        if num_all_args in [2, 3]:
-            cu_seqlens_kv = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(kv_seqlen), dim=0)]).int().to(device)
         if num_all_args == 1:
-            out = flash_attn_3.flash_attn_varlen_qkvpacked_func(qkv, cu_seqlens_q, max(q_seqlen))
+            q, k, v = qkv.unbind(dim=1)
+            cu_seqlens_kv = cu_seqlens_q.clone()
+            max_q_seqlen = max_kv_seqlen = max(q_seqlen)
         elif num_all_args == 2:
-            out = flash_attn_3.flash_attn_varlen_kvpacked_func(q, kv, cu_seqlens_q, cu_seqlens_kv, max(q_seqlen), max(kv_seqlen))
+            k, v = kv.unbind(dim=1)
+            cu_seqlens_kv = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(kv_seqlen), dim=0)]).int().to(device)
+            max_q_seqlen = max(q_seqlen)
+            max_kv_seqlen = max(kv_seqlen)
         elif num_all_args == 3:
-            out = flash_attn_3.flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_kv, max(q_seqlen), max(kv_seqlen))
+            cu_seqlens_kv = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(kv_seqlen), dim=0)]).int().to(device)
+            max_q_seqlen = max(q_seqlen)
+            max_kv_seqlen = max(kv_seqlen)
+        out = flash_attn_3.flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_kv, max_q_seqlen, max_kv_seqlen)
     else:
         raise ValueError(f"Unknown attention module: {config.ATTN}")
     
