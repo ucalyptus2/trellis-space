@@ -122,7 +122,6 @@ class PbrMeshRenderer:
 
     Args:
         rendering_options (dict): Rendering options.
-        glctx (nvdiffrast.torch.RasterizeGLContext): RasterizeGLContext object for CUDA/OpenGL interop.
         """
     def __init__(self, rendering_options={}, device='cuda'):
         if 'dr' not in globals():
@@ -136,7 +135,7 @@ class PbrMeshRenderer:
             "peel_layers": 8,
         })
         self.rendering_options.update(rendering_options)
-        self.glctx = dr.RasterizeGLContext(device=device)
+        self.glctx = dr.RasterizeCudaContext(device=device)
         self.device=device
         
     def render(

@@ -39,7 +39,6 @@ class MeshRenderer:
 
     Args:
         rendering_options (dict): Rendering options.
-        glctx (nvdiffrast.torch.RasterizeGLContext): RasterizeGLContext object for CUDA/OpenGL interop.
         """
     def __init__(self, rendering_options={}, device='cuda'):
         if 'dr' not in globals():

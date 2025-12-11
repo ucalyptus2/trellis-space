@@ -143,9 +143,10 @@ def image_to_3d(
         }[resolution],
         return_latent=True,
     )
-    print('DONE')
+    mesh = outputs[0]
+    mesh.simplify(16777216) # nvdiffrast limit
     images = render_utils.make_pbr_vis_frames(
-        render_utils.render_snapshot(outputs[0], resolution=1024, r=2, fov=36, envmap=envmap),
+        render_utils.render_snapshot(mesh, resolution=1024, r=2, fov=36, envmap=envmap),
         resolution=1024
     )
     state = pack_state(latents)
