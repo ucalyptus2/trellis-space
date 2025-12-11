@@ -43,7 +43,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         image_cond_model: Callable = None,
         rembg_model: Callable = None,
         low_vram: bool = True,
-        default_pipeline_type: str = '512->1024',
+        default_pipeline_type: str = '1024_cascade',
     ):
         if models is None:
             return
@@ -97,7 +97,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         new_pipeline.rembg_model = getattr(rembg, args['rembg_model']['name'])(**args['rembg_model']['args'])
         
         new_pipeline.low_vram = args.get('low_vram', True)
-        new_pipeline.default_pipeline_type = args.get('default_pipeline_type', '512->1024')
+        new_pipeline.default_pipeline_type = args.get('default_pipeline_type', '1024_cascade')
         new_pipeline.pbr_attr_layout = {
             'base_color': slice(0, 3),
             'metallic': slice(3, 4),
@@ -114,7 +114,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             super().to(device)
             self.image_cond_model.to(device)
             self.rembg_model.to(device)
-    
+
     @spaces.GPU()
     def remove_background(self, input: Image.Image) -> Image.Image:
         input = input.convert('RGB')
@@ -509,7 +509,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             tex_slat_sampler_params (dict): Additional parameters for the texture SLat sampler.
             preprocess_image (bool): Whether to preprocess the image.
             return_latent (bool): Whether to return the latent codes.
-            pipeline_type (str): The type of the pipeline. Options: '512', '1024', '512->1024', '512->1536'.
+            pipeline_type (str): The type of the pipeline. Options: '512', '1024', '1024_cascade', '1536_cascade'.
             max_num_tokens (int): The maximum number of tokens to use.
         """
         # Check pipeline type
@@ -520,11 +520,11 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         elif pipeline_type == '1024':
             assert 'shape_slat_flow_model_1024' in self.models, "No 1024 resolution shape SLat flow model found."
             assert 'tex_slat_flow_model_1024' in self.models, "No 1024 resolution texture SLat flow model found."
-        elif pipeline_type == '512->1024':
+        elif pipeline_type == '1024_cascade':
             assert 'shape_slat_flow_model_512' in self.models, "No 512 resolution shape SLat flow model found."
             assert 'shape_slat_flow_model_1024' in self.models, "No 1024 resolution shape SLat flow model found."
             assert 'tex_slat_flow_model_1024' in self.models, "No 1024 resolution texture SLat flow model found."
-        elif pipeline_type == '512->1536':
+        elif pipeline_type == '1536_cascade':
             assert 'shape_slat_flow_model_512' in self.models, "No 512 resolution shape SLat flow model found."
             assert 'shape_slat_flow_model_1024' in self.models, "No 1024 resolution shape SLat flow model found."
             assert 'tex_slat_flow_model_1024' in self.models, "No 1024 resolution texture SLat flow model found."
@@ -536,7 +536,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         torch.manual_seed(seed)
         cond_512 = self.get_cond([image], 512)
         cond_1024 = self.get_cond([image], 1024) if pipeline_type != '512' else None
-        ss_res = {'512': 32, '1024': 64, '512->1024': 32, '512->1536': 32}[pipeline_type]
+        ss_res = {'512': 32, '1024': 64, '1024_cascade': 32, '1536_cascade': 32}[pipeline_type]
         coords = self.sample_sparse_structure(
             cond_512, ss_res,
             num_samples, sparse_structure_sampler_params
@@ -561,7 +561,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 shape_slat, tex_slat_sampler_params
             )
             res = 1024
-        elif pipeline_type == '512->1024':
+        elif pipeline_type == '1024_cascade':
             shape_slat, res = self.sample_shape_slat_cascade(
                 cond_512, cond_1024,
                 self.models['shape_slat_flow_model_512'], self.models['shape_slat_flow_model_1024'],
@@ -573,7 +573,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 cond_1024, self.models['tex_slat_flow_model_1024'],
                 shape_slat, tex_slat_sampler_params
             )
-        elif pipeline_type == '512->1536':
+        elif pipeline_type == '1536_cascade':
             shape_slat, res = self.sample_shape_slat_cascade(
                 cond_512, cond_1024,
                 self.models['shape_slat_flow_model_512'], self.models['shape_slat_flow_model_1024'],

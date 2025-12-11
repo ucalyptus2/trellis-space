@@ -4,6 +4,7 @@ import spaces
 import os
 os.environ["OPENCV_IO_ENABLE_OPENEXR"] = '1'
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+os.environ["ATTN_BACKEND"] = "flash_attn_3"
 os.environ["FLEX_GEMM_AUTOTUNE_CACHE_PATH"] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'autotune_cache.json')
 os.environ["FLEX_GEMM_AUTOTUNER_VERBOSE"] = '1'
 from datetime import datetime
@@ -330,7 +331,7 @@ with gr.Blocks(delete_cache=(600, 600)) as demo:
 
 # Launch the Gradio app
 if __name__ == "__main__":
-    pipeline = Trellis2ImageTo3DPipeline.from_pretrained('JeffreyXiang/TRELLIS.2-4B')
+    pipeline = Trellis2ImageTo3DPipeline.from_pretrained('microsoft/TRELLIS.2-4B')
     pipeline.low_vram = False
     pipeline.cuda()
     
