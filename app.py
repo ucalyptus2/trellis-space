@@ -44,6 +44,7 @@ def preprocess_image(image: Image.Image) -> Image.Image:
     Returns:
         Image.Image: The preprocessed image.
     """
+    print(torch.cuda.get_device_name())
     processed_image = pipeline.preprocess_image(image)
     return processed_image
 
