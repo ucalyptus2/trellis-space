@@ -1,4 +1,5 @@
 import gradio as gr
+from gradio_client import Client
 import spaces
 
 import os
@@ -36,10 +37,9 @@ def end_session(req: gr.Request):
     shutil.rmtree(user_dir)
     
 
-@spaces.GPU()
 def remove_background(input: Image.Image) -> Image.Image:
     input = input.convert('RGB')
-    output = pipeline.rembg_model(input)
+    output = rmbg_client.predict(input, api_name="/image")[0][0]
     return output
 
 
@@ -357,7 +357,9 @@ with gr.Blocks(delete_cache=(600, 600)) as demo:
 
 # Launch the Gradio app
 if __name__ == "__main__":
+    rmbg_client = Client("briaai/BRIA-RMBG-2.0")
     pipeline = Trellis2ImageTo3DPipeline.from_pretrained('microsoft/TRELLIS.2-4B')
+    pipeline.rembg_model = None
     pipeline.low_vram = False
     pipeline.cuda()
     
