@@ -113,7 +113,8 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if not self.low_vram:
             super().to(device)
             self.image_cond_model.to(device)
-            self.rembg_model.to(device)
+            if self.rembg_model is not None:
+                self.rembg_model.to(device)
 
     def preprocess_image(self, input: Image.Image) -> Image.Image:
         """
