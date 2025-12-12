@@ -1,5 +1,5 @@
 import gradio as gr
-from gradio_client import Client
+from gradio_client import Client, handle_file
 import spaces
 
 import os
@@ -15,6 +15,7 @@ from typing import *
 import torch
 import numpy as np
 from PIL import Image
+import tempfile
 from trellis2.modules.sparse import SparseTensor
 from trellis2.pipelines import Trellis2ImageTo3DPipeline
 from trellis2.renderers import EnvMap
@@ -38,9 +39,12 @@ def end_session(req: gr.Request):
     
 
 def remove_background(input: Image.Image) -> Image.Image:
-    input = input.convert('RGB')
-    output = rmbg_client.predict(input, api_name="/image")[0][0]
-    return output
+    with tempfile.NamedTemporaryFile(suffix='.png') as f:
+        input = input.convert('RGB')
+        input.save(f.name)
+        output = rmbg_client.predict(handle_file(f.name), api_name="/image")[0][0]
+        output = Image.open(output)
+        return output
 
 
 def preprocess_image(input: Image.Image) -> Image.Image:
