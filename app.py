@@ -43,7 +43,7 @@ def remove_background(input: Image.Image) -> Image.Image:
     return output
 
 
-def preprocess_image(self, input: Image.Image) -> Image.Image:
+def preprocess_image(input: Image.Image) -> Image.Image:
     """
     Preprocess the input image.
     """
