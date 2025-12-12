@@ -11,6 +11,13 @@ from ..modules import image_feature_extractor
 from ..representations import Mesh, MeshWithVoxel
 
 
+@spaces.GPU()
+def remove_background(rembg_model, input: Image.Image) -> Image.Image:
+    input = input.convert('RGB')
+    output = rembg_model(input)
+    return output
+
+
 class Trellis2ImageTo3DPipeline(Pipeline):
     """
     Pipeline for inferring Trellis2 image-to-3D models.
@@ -115,16 +122,6 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             self.image_cond_model.to(device)
             self.rembg_model.to(device)
 
-    @spaces.GPU()
-    def remove_background(self, input: Image.Image) -> Image.Image:
-        input = input.convert('RGB')
-        if self.low_vram:
-            self.rembg_model.to(self.device)
-        output = self.rembg_model(input)
-        if self.low_vram:
-            self.rembg_model.cpu()
-        return output
-
     def preprocess_image(self, input: Image.Image) -> Image.Image:
         """
         Preprocess the input image.
@@ -142,7 +139,11 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if has_alpha:
             output = input
         else:
-            output = self.remove_background(input)
+            if self.low_vram:
+                self.rembg_model.to(self.device)
+            output = remove_background(self.rembg_model, input)
+            if self.low_vram:
+                self.rembg_model.cpu()
         output_np = np.array(output)
         alpha = output_np[:, :, 3]
         bbox = np.argwhere(alpha > 0.8 * 255)
