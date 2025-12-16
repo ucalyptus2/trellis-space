@@ -17,6 +17,7 @@ import numpy as np
 from PIL import Image
 import base64
 import io
+import tempfile
 from trellis2.modules.sparse import SparseTensor
 from trellis2.pipelines import Trellis2ImageTo3DPipeline
 from trellis2.renderers import EnvMap
@@ -279,20 +280,19 @@ def end_session(req: gr.Request):
     shutil.rmtree(user_dir)
     
 
-def remove_background(input: Image.Image, user_dir: str) -> Image.Image:
-    input = input.convert('RGB')
-    os.makedirs(user_dir, exist_ok=True)
-    input.save(os.path.join(user_dir, 'input.png'))
-    output = rmbg_client.predict(handle_file(os.path.join(user_dir, 'input.png')), api_name="/image")[0][0]
-    output = Image.open(output)
-    return output
+def remove_background(input: Image.Image) -> Image.Image:
+    with tempfile.NamedTemporaryFile(suffix='.png') as f:
+        input = input.convert('RGB')
+        input.save(f.name)
+        output = rmbg_client.predict(handle_file(f.name), api_name="/image")[0][0]
+        output = Image.open(output)
+        return output
 
 
-def preprocess_image(input: Image.Image, req: gr.Request,) -> Image.Image:
+def preprocess_image(input: Image.Image) -> Image.Image:
     """
     Preprocess the input image.
     """
-    user_dir = os.path.join(TMP_DIR, str(req.session_hash))
     # if has alpha channel, use it directly; otherwise, remove background
     has_alpha = False
     if input.mode == 'RGBA':
@@ -306,7 +306,7 @@ def preprocess_image(input: Image.Image, req: gr.Request,) -> Image.Image:
     if has_alpha:
         output = input
     else:
-        output = remove_background(input, user_dir)
+        output = remove_background(input)
     output_np = np.array(output)
     alpha = output_np[:, :, 3]
     bbox = np.argwhere(alpha > 0.8 * 255)
