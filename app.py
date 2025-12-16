@@ -89,6 +89,7 @@ css = """
 
 /* Previewer */
 .previewer-container {
+    position: relative;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     width: 100%;
     height: 722px;
@@ -98,6 +99,44 @@ css = """
     flex-direction: column;
     align-items: center;
     justify-content: center;
+}
+
+.previewer-container .tips-icon {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    z-index: 10;
+    border-radius: 10px;
+    color: #fff;
+    background-color: var(--color-accent);
+    padding: 3px 6px;
+    user-select: none;
+}
+
+.previewer-container .tips-text {
+    position: absolute;
+    right: 10px;
+    top: 50px;
+    color: #fff;
+    background-color: var(--color-accent);
+    border-radius: 10px;
+    padding: 6px;
+    text-align: left;
+    max-width: 300px;
+    z-index: 10;
+    transition: all 0.3s;
+    opacity: 0%;
+    user-select: none;
+}
+
+.previewer-container .tips-text p {
+    font-size: 14px;
+    line-height: 1.2;
+}
+
+.tips-icon:hover + .tips-text { 
+    display: block;
+    opacity: 100%;
 }
 
 /* Row 1: Display Modes */
@@ -437,6 +476,14 @@ def image_to_3d(
     # Assemble the full component
     full_html = f"""
     <div class="previewer-container">
+        <div class="tips-wrapper">
+            <div class="tips-icon">💡Tips</div>
+            <div class="tips-text">
+                <p>● <b>Render Mode</b> - Click on the circular buttons to switch between different render modes.</p>
+                <p>● <b>View Angle</b> - Drag the slider to change the view angle.</p>
+            </div>
+        </div>
+        
         <!-- Row 1: Viewport containing 48 static <img> tags -->
         <div class="display-row">
             {images_html}
@@ -508,7 +555,7 @@ with gr.Blocks(delete_cache=(600, 600)) as demo:
     gr.Markdown("""
     ## Image to 3D Asset with [TRELLIS.2](https://microsoft.github.io/trellis.2)
     * Upload an image (preferably with an alpha-masked foreground object) and click Generate to create a 3D asset.
-    * If you're satisfied with the result, click Extract GLB to export and download the generated GLB file.
+    * Click Extract GLB to export and download the generated GLB file if you're satisfied with the result. Otherwise, try another time.
     """)
     
     with gr.Row():
