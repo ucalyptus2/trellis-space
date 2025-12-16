@@ -546,7 +546,7 @@ def extract_glb(
     timestamp = now.strftime("%Y-%m-%dT%H%M%S") + f".{now.microsecond // 1000:03d}"
     os.makedirs(user_dir, exist_ok=True)
     glb_path = os.path.join(user_dir, f'sample_{timestamp}.glb')
-    glb.export(glb_path)
+    glb.export(glb_path, extension_webp=True)
     torch.cuda.empty_cache()
     return glb_path, glb_path
 
