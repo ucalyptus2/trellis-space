@@ -90,6 +90,77 @@ def intrinsics_to_projection(
     return ret
 
 
+def screen_space_ambient_occlusion(
+    depth: torch.Tensor,
+    normal: torch.Tensor,
+    perspective: torch.Tensor,
+    radius: float = 0.1,
+    bias: float = 1e-6,
+    samples: int = 64,
+    intensity: float = 1.0,
+) -> torch.Tensor:
+    """
+    Screen space ambient occlusion (SSAO)
+
+    Args:
+        depth (torch.Tensor): [H, W, 1] depth image
+        normal (torch.Tensor): [H, W, 3] normal image
+        perspective (torch.Tensor): [4, 4] camera projection matrix
+        radius (float): radius of the SSAO kernel
+        bias (float): bias to avoid self-occlusion
+        samples (int): number of samples to use for the SSAO kernel
+        intensity (float): intensity of the SSAO effect
+    Returns:
+        (torch.Tensor): [H, W, 1] SSAO image
+    """
+    device = depth.device
+    H, W, _ = depth.shape
+    
+    fx = perspective[0, 0]
+    fy = perspective[1, 1]
+    cx = perspective[0, 2]
+    cy = perspective[1, 2]
+    
+    y_grid, x_grid = torch.meshgrid(
+        (torch.arange(H, device=device) + 0.5) / H * 2 - 1,
+        (torch.arange(W, device=device) + 0.5) / W * 2 - 1,
+        indexing='ij'
+    )
+    x_view = (x_grid.float() - cx) * depth[..., 0] / fx
+    y_view = (y_grid.float() - cy) * depth[..., 0] / fy
+    view_pos = torch.stack([x_view, y_view, depth[..., 0]], dim=-1) # [H, W, 3]
+    
+    depth_feat = depth.permute(2, 0, 1).unsqueeze(0)
+    occlusion = torch.zeros((H, W), device=device)
+    
+    # start sampling
+    for _ in range(samples):
+        # sample normal distribution, if inside, flip the sign
+        rnd_vec = torch.randn(H, W, 3, device=device)
+        rnd_vec = F.normalize(rnd_vec, p=2, dim=-1)
+        dot_val = torch.sum(rnd_vec * normal, dim=-1, keepdim=True)
+        sample_dir = torch.sign(dot_val) * rnd_vec
+        scale = torch.rand(H, W, 1, device=device)
+        scale = scale * scale
+        sample_pos = view_pos + sample_dir * radius * scale
+        sample_z = sample_pos[..., 2]
+        
+        # project to screen space
+        z_safe = torch.clamp(sample_pos[..., 2], min=1e-5)
+        proj_u = (sample_pos[..., 0] * fx / z_safe) + cx
+        proj_v = (sample_pos[..., 1] * fy / z_safe) + cy
+        grid = torch.stack([proj_u, proj_v], dim=-1).unsqueeze(0)
+        geo_z = F.grid_sample(depth_feat, grid, mode='nearest', padding_mode='border').squeeze()
+        range_check = torch.abs(geo_z - sample_z) < radius
+        is_occluded = (geo_z <= sample_z - bias) & range_check
+        occlusion += is_occluded.float()
+        
+    f_occ = occlusion / samples * intensity
+    f_occ = torch.clamp(f_occ, 0.0, 1.0)
+    
+    return f_occ.unsqueeze(-1)
+
+
 def aces_tonemapping(x: torch.Tensor) -> torch.Tensor:
     """
     Applies ACES tone mapping curve to an HDR image tensor.
@@ -143,7 +214,8 @@ class PbrMeshRenderer:
             mesh : Mesh,
             extrinsics: torch.Tensor,
             intrinsics: torch.Tensor,
-            envmap : EnvMap,
+            envmap : Union[EnvMap, Dict[str, EnvMap]],
+            use_envmap_bg : bool = False,
             transformation : Optional[torch.Tensor] = None
         ) -> edict:
         """
@@ -153,7 +225,8 @@ class PbrMeshRenderer:
             mesh : meshmodel
             extrinsics (torch.Tensor): (4, 4) camera extrinsics
             intrinsics (torch.Tensor): (3, 3) camera intrinsics
-            envmap : EnvMap
+            envmap (Union[EnvMap, Dict[str, EnvMap]]): environment map or a dictionary of environment maps
+            use_envmap_bg (bool): whether to use envmap as background
             transformation (torch.Tensor): (4, 4) transformation matrix
 
         Returns:
@@ -166,6 +239,10 @@ class PbrMeshRenderer:
         """
         if 'dr' not in globals():
             import nvdiffrast.torch as dr
+            
+        if not isinstance(envmap, dict):
+            envmap = {'' : envmap}
+        num_envmaps = len(envmap)
             
         resolution = self.rendering_options["resolution"]
         near = self.rendering_options["near"]
@@ -192,6 +269,7 @@ class PbrMeshRenderer:
         if transformation is not None:
             vertices_homo = torch.bmm(vertices_homo, transformation.unsqueeze(0).transpose(-1, -2))
             vertices = vertices_homo[..., :3].contiguous()
+        vertices_camera = torch.bmm(vertices_homo, extrinsics.transpose(-1, -2))
         vertices_clip = torch.bmm(vertices_homo, full_proj.transpose(-1, -2))
         faces = mesh.faces
         
@@ -204,7 +282,10 @@ class PbrMeshRenderer:
         face_normal = F.normalize(face_normal, dim=1)
         
         out_dict = edict()
-        shaded = torch.zeros((resolution * ssaa, resolution * ssaa, 3), dtype=torch.float32, device=self.device)
+        shaded = torch.zeros((num_envmaps, resolution * ssaa, resolution * ssaa, 3), dtype=torch.float32, device=self.device)
+        depth = torch.full((resolution * ssaa, resolution * ssaa, 1), 1e10, dtype=torch.float32, device=self.device)
+        normal = torch.zeros((resolution * ssaa, resolution * ssaa, 3), dtype=torch.float32, device=self.device)
+        max_w = torch.zeros((resolution * ssaa, resolution * ssaa, 1), dtype=torch.float32, device=self.device)
         alpha = torch.zeros((resolution * ssaa, resolution * ssaa, 1), dtype=torch.float32, device=self.device)
         with dr.DepthPeeler(self.glctx, vertices_clip, faces, (resolution * ssaa, resolution * ssaa)) as peeler:
             for _ in range(self.rendering_options["peel_layers"]):
@@ -212,6 +293,9 @@ class PbrMeshRenderer:
                 
                 # Pos
                 pos = dr.interpolate(vertices, rast, faces)[0][0]
+                
+                # Depth
+                gb_depth = dr.interpolate(vertices_camera[..., 2:3].contiguous(), rast, faces)[0][0]
                         
                 # Normal
                 gb_normal = dr.interpolate(face_normal.unsqueeze(0), rast, torch.arange(face_normal.shape[0], dtype=torch.int, device=self.device).unsqueeze(1).repeat(1, 3).contiguous())[0][0]
@@ -220,10 +304,9 @@ class PbrMeshRenderer:
                     -gb_normal,
                     gb_normal
                 )
+                gb_cam_normal = (extrinsics[..., :3, :3].reshape(1, 1, 3, 3) @ gb_normal.unsqueeze(-1)).squeeze(-1)
                 if _ == 0:
-                    cam_normal = extrinsics[..., :3, :3].reshape(1, 1, 3, 3) @ gb_normal.unsqueeze(-1)
-                    cam_normal = -cam_normal.squeeze(-1) * 0.5 + 0.5
-                    out_dict.normal = cam_normal
+                    out_dict.normal = -gb_cam_normal * 0.5 + 0.5
                     mask = (rast[0, ..., -1:] > 0).float()
                     out_dict.mask = mask
                 
@@ -344,25 +427,41 @@ class PbrMeshRenderer:
                     gb_roughness,
                     gb_metallic,
                 ], dim=-1)
-                gb_shaded = envmap.shade(
-                    pos.unsqueeze(0),
-                    gb_normal.unsqueeze(0),
-                    gb_basecolor.unsqueeze(0),
-                    gb_orm.unsqueeze(0),
-                    rays_o,
-                    specular=True,
-                )[0]
+                gb_shaded = torch.stack([
+                    e.shade(
+                        pos.unsqueeze(0),
+                        gb_normal.unsqueeze(0),
+                        gb_basecolor.unsqueeze(0),
+                        gb_orm.unsqueeze(0),
+                        rays_o,
+                        specular=True,
+                    )[0]
+                    for e in envmap.values()
+                ], dim=0)
                 
-                # Alpha blend
+                # Compositing
                 w = (1 - alpha) * gb_alpha
+                depth = torch.where(w > max_w, gb_depth, depth)
+                normal = torch.where(w > max_w, gb_cam_normal, normal)
+                max_w = torch.maximum(max_w, w)
                 shaded += w * gb_shaded
                 alpha += w
+        
+        # Ambient occulusion
+        f_occ = screen_space_ambient_occlusion(
+            depth, normal, perspective, intensity=1.5
+        )
+        shaded *= (1 - f_occ)
+        out_dict.clay = (1 - f_occ)
                 
         # Background
-        bg = envmap.sample(rays_d)
-        shaded += (1 - alpha) * bg
+        if use_envmap_bg:
+            bg = torch.stack([e.sample(rays_d) for e in envmap.values()], dim=0)
+            shaded += (1 - alpha) * bg
         
-        out_dict.shaded = shaded
+        for i, k in enumerate(envmap.keys()):
+            shaded_key = f"shaded_{k}" if k != '' else "shaded"
+            out_dict[shaded_key] = shaded[i]
     
         # SSAA
         for k in out_dict.keys():
@@ -373,7 +472,9 @@ class PbrMeshRenderer:
             out_dict[k] = out_dict[k].squeeze()
                 
         # Post processing
-        out_dict.shaded = aces_tonemapping(out_dict.shaded)
-        out_dict.shaded = gamma_correction(out_dict.shaded)
+        for k in envmap.keys():
+            shaded_key = f"shaded_{k}" if k != '' else "shaded"
+            out_dict[shaded_key] = aces_tonemapping(out_dict[shaded_key])
+            out_dict[shaded_key] = gamma_correction(out_dict[shaded_key])
             
         return out_dict

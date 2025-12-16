@@ -15,7 +15,8 @@ from typing import *
 import torch
 import numpy as np
 from PIL import Image
-import tempfile
+import base64
+import io
 from trellis2.modules.sparse import SparseTensor
 from trellis2.pipelines import Trellis2ImageTo3DPipeline
 from trellis2.renderers import EnvMap
@@ -25,7 +26,247 @@ import o_voxel
 
 MAX_SEED = np.iinfo(np.int32).max
 TMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tmp')
-os.makedirs(TMP_DIR, exist_ok=True)
+MODES = [
+    {"name": "Normal", "icon": "assets/app/normal.png", "render_key": "normal"},
+    {"name": "Clay render", "icon": "assets/app/clay.png", "render_key": "clay"},
+    {"name": "Base color", "icon": "assets/app/basecolor.png", "render_key": "base_color"},
+    {"name": "HDRI forest", "icon": "assets/app/hdri_forest.png", "render_key": "shaded_forest"},
+    {"name": "HDRI sunset", "icon": "assets/app/hdri_sunset.png", "render_key": "shaded_sunset"},
+    {"name": "HDRI courtyard", "icon": "assets/app/hdri_courtyard.png", "render_key": "shaded_courtyard"},
+]
+STEPS = 8
+DEFAULT_MODE = 3
+DEFAULT_STEP = 3
+
+
+css = """
+/* Overwrite Gradio Default Style */
+.stepper-wrapper {
+    padding: 0;
+}
+
+.stepper-container {
+    padding: 0;
+    align-items: center;
+}
+
+.step-button {
+    flex-direction: row;
+}
+
+.step-connector {
+    transform: none;
+}
+
+.step-number {
+    width: 16px;
+    height: 16px;
+}
+
+.step-label {
+    position: relative;
+    bottom: 0;
+}
+
+.wrap.center.full {
+    inset: 0;
+    height: 100%;
+}
+
+.wrap.center.full.translucent {
+    background: var(--block-background-fill);
+}
+
+.meta-text-center {
+    display: block !important;
+    position: absolute !important;
+    top: unset !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    transform: unset !important;
+}
+
+
+/* Previewer */
+.previewer-container {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    width: 100%;
+    height: 722px;
+    margin: 0 auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Row 1: Display Modes */
+.previewer-container .mode-row {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+.previewer-container .mode-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: all 0.2s;
+    border: 2px solid #ddd;
+    object-fit: cover;
+}
+.previewer-container .mode-btn:hover { opacity: 0.9; transform: scale(1.1); }
+.previewer-container .mode-btn.active {
+    opacity: 1;
+    border-color: var(--color-accent);
+    transform: scale(1.1);
+}
+
+/* Row 2: Display Image */
+.previewer-container .display-row {
+    margin-bottom: 20px;
+    min-height: 400px;
+    width: 100%;
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.previewer-container .previewer-main-image {
+    max-width: 100%;
+    max-height: 100%;
+    flex-grow: 1;
+    object-fit: contain;
+    display: none;
+}
+.previewer-container .previewer-main-image.visible {
+    display: block;
+}
+
+/* Row 3: Custom HTML Slider */
+.previewer-container .slider-row {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 0 10px;
+}
+
+.previewer-container input[type=range] {
+    -webkit-appearance: none;
+    width: 100%;
+    max-width: 400px;
+    background: transparent;
+}
+.previewer-container input[type=range]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 8px;
+    cursor: pointer;
+    background: #ddd;
+    border-radius: 5px;
+}
+.previewer-container input[type=range]::-webkit-slider-thumb {
+    height: 20px;
+    width: 20px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    cursor: pointer;
+    -webkit-appearance: none;
+    margin-top: -6px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    transition: transform 0.1s;
+}
+.previewer-container input[type=range]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+"""
+
+
+head = """
+<script>
+    function refreshView(mode, step) {
+        // 1. Find current mode and step
+        const allImgs = document.querySelectorAll('.previewer-main-image');
+        for (let i = 0; i < allImgs.length; i++) {
+            const img = allImgs[i];
+            if (img.classList.contains('visible')) {
+                const id = img.id;
+                const [_, m, s] = id.split('-');
+                if (mode === -1) mode = parseInt(m.slice(1));
+                if (step === -1) step = parseInt(s.slice(1));
+                break;
+            }
+        }
+        
+        // 2. Hide ALL images
+        // We select all elements with class 'previewer-main-image'
+        allImgs.forEach(img => img.classList.remove('visible'));
+
+        // 3. Construct the specific ID for the current state
+        // Format: view-m{mode}-s{step}
+        const targetId = 'view-m' + mode + '-s' + step;
+        const targetImg = document.getElementById(targetId);
+
+        // 4. Show ONLY the target
+        if (targetImg) {
+            targetImg.classList.add('visible');
+        }
+
+        // 5. Update Button Highlights
+        const allBtns = document.querySelectorAll('.mode-btn');
+        allBtns.forEach((btn, idx) => {
+            if (idx === mode) btn.classList.add('active');
+            else btn.classList.remove('active');
+        });
+    }
+    
+    // --- Action: Switch Mode ---
+    function selectMode(mode) {
+        refreshView(mode, -1);
+    }
+    
+    // --- Action: Slider Change ---
+    function onSliderChange(val) {
+        refreshView(-1, parseInt(val));
+    }
+    
+    function modify_html_container() {
+        const container = document.querySelector('.previewer-container');
+        const html_container = container.parentNode.parentNode.parentNode;
+        
+        // Remove class padded
+        html_container.classList.remove('padded');
+        
+        // Search for data-testid="block-label" in html_container's children
+        const status_tracker = html_container.querySelector('[data-testid="block-label"]');
+        if (status_tracker) {
+            // Add class float
+            status_tracker.classList.add('float');
+        }
+    }
+</script>
+"""
+
+
+empty_html = f"""
+<div class="previewer-container">
+    <svg style=" opacity: .5; height: var(--size-5); color: var(--body-text-color);"
+    xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="feather feather-image"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+</div>
+"""
+
+
+def image_to_base64(image):
+    buffered = io.BytesIO()
+    image = image.convert("RGB")
+    image.save(buffered, format="jpeg", quality=85)
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+    return f"data:image/jpeg;base64,{img_str}"
 
 
 def start_session(req: gr.Request):
@@ -38,19 +279,20 @@ def end_session(req: gr.Request):
     shutil.rmtree(user_dir)
     
 
-def remove_background(input: Image.Image) -> Image.Image:
-    with tempfile.NamedTemporaryFile(suffix='.png') as f:
-        input = input.convert('RGB')
-        input.save(f.name)
-        output = rmbg_client.predict(handle_file(f.name), api_name="/image")[0][0]
-        output = Image.open(output)
-        return output
+def remove_background(input: Image.Image, user_dir: str) -> Image.Image:
+    input = input.convert('RGB')
+    os.makedirs(user_dir, exist_ok=True)
+    input.save(os.path.join(user_dir, 'input.png'))
+    output = rmbg_client.predict(handle_file(os.path.join(user_dir, 'input.png')), api_name="/image")[0][0]
+    output = Image.open(output)
+    return output
 
 
-def preprocess_image(input: Image.Image) -> Image.Image:
+def preprocess_image(input: Image.Image, req: gr.Request,) -> Image.Image:
     """
     Preprocess the input image.
     """
+    user_dir = os.path.join(TMP_DIR, str(req.session_hash))
     # if has alpha channel, use it directly; otherwise, remove background
     has_alpha = False
     if input.mode == 'RGBA':
@@ -64,7 +306,7 @@ def preprocess_image(input: Image.Image) -> Image.Image:
     if has_alpha:
         output = input
     else:
-        output = remove_background(input)
+        output = remove_background(input, user_dir)
     output_np = np.array(output)
     alpha = output_np[:, :, 3]
     bbox = np.argwhere(alpha > 0.8 * 255)
@@ -126,24 +368,7 @@ def image_to_3d(
     req: gr.Request,
     progress=gr.Progress(track_tqdm=True),
 ) -> str:
-    """
-    Convert an image to a 3D model.
-
-    Args:
-        image (Image.Image): The input image.
-        seed (int): The random seed.
-        ss_guidance_strength (float): The guidance strength for sparse structure generation.
-        ss_sampling_steps (int): The number of sampling steps for sparse structure generation.
-        shape_slat_guidance_strength (float): The guidance strength for shape slat generation.
-        shape_slat_sampling_steps (int): The number of sampling steps for shape slat generation.
-        tex_slat_guidance_strength (float): The guidance strength for texture slat generation.
-        tex_slat_sampling_steps (int): The number of sampling steps for texture slat generation.
-
-    Returns:
-        str: The path to the preview video of the 3D model.
-        str: The path to the 3D model.
-    """
-    user_dir = os.path.join(TMP_DIR, str(req.session_hash))
+    # --- Sampling ---
     outputs, latents = pipeline.run(
         image,
         seed=seed,
@@ -175,13 +400,66 @@ def image_to_3d(
     )
     mesh = outputs[0]
     mesh.simplify(16777216) # nvdiffrast limit
-    images = render_utils.make_pbr_vis_frames(
-        render_utils.render_snapshot(mesh, resolution=1024, r=2, fov=36, envmap=envmap),
-        resolution=1024
-    )
+    images = render_utils.render_snapshot(mesh, resolution=1024, r=2, fov=36, nviews=STEPS, envmap=envmap)
     state = pack_state(latents)
     torch.cuda.empty_cache()
-    return state, [Image.fromarray(image) for image in images]
+    
+    # --- HTML Construction ---
+    # The Stack of 48 Images
+    images_html = ""
+    for m_idx, mode in enumerate(MODES):
+        for s_idx in range(STEPS):
+            # ID Naming Convention: view-m{mode}-s{step}
+            unique_id = f"view-m{m_idx}-s{s_idx}"
+            
+            # Logic: Only Mode 0, Step 0 is visible initially
+            is_visible = (m_idx == DEFAULT_MODE and s_idx == DEFAULT_STEP)
+            vis_class = "visible" if is_visible else ""
+            
+            # Image Source
+            img_base64 = image_to_base64(Image.fromarray(images[mode['render_key']][s_idx]))
+            
+            # Render the Tag
+            images_html += f"""
+                <img id="{unique_id}" 
+                     class="previewer-main-image {vis_class}" 
+                     src="{img_base64}" 
+                     loading="eager">
+            """
+    
+    # Button Row HTML
+    btns_html = ""
+    for idx, mode in enumerate(MODES):        
+        active_class = "active" if idx == DEFAULT_MODE else ""
+        # Note: onclick calls the JS function defined in Head
+        btns_html += f"""
+            <img src="{mode['icon_base64']}" 
+                 class="mode-btn {active_class}" 
+                 onclick="selectMode({idx})"
+                 title="{mode['name']}">
+        """
+    
+    # Assemble the full component
+    full_html = f"""
+    <div class="previewer-container">
+        <!-- Row 1: Viewport containing 48 static <img> tags -->
+        <div class="display-row">
+            {images_html}
+        </div>
+        
+        <!-- Row 2 -->
+        <div class="mode-row" id="btn-group">
+            {btns_html}
+        </div>
+
+        <!-- Row 3: Slider -->
+        <div class="slider-row">
+            <input type="range" id="custom-slider" min="0" max="{STEPS - 1}" value="{DEFAULT_STEP}" step="1" oninput="onSliderChange(this.value)">
+        </div>
+    </div>
+    """
+    
+    return state, full_html
 
 
 @spaces.GPU(duration=60)
@@ -206,6 +484,7 @@ def extract_glb(
     user_dir = os.path.join(TMP_DIR, str(req.session_hash))
     shape_slat, tex_slat, res = unpack_state(state)
     mesh = pipeline.decode_latent(shape_slat, tex_slat, res)[0]
+    mesh.simplify(16777216)
     glb = o_voxel.postprocess.to_glb(
         vertices=mesh.vertices,
         faces=mesh.faces,
@@ -229,36 +508,6 @@ def extract_glb(
     return glb_path, glb_path
 
 
-css = """
-.stepper-wrapper {
-    padding: 0;
-}
-
-.stepper-container {
-    padding: 0;
-    align-items: center;
-}
-
-.step-button {
-    flex-direction: row;
-}
-
-.step-connector {
-    transform: none;
-}
-
-.step-number {
-    width: 16px;
-    height: 16px;
-}
-
-.step-label {
-    position: relative;
-    bottom: 0;
-}
-"""
-
-
 with gr.Blocks(delete_cache=(600, 600)) as demo:
     gr.Markdown("""
     ## Image to 3D Asset with [TRELLIS.2](https://microsoft.github.io/trellis.2)
@@ -270,11 +519,13 @@ with gr.Blocks(delete_cache=(600, 600)) as demo:
         with gr.Column(scale=1, min_width=360):
             image_prompt = gr.Image(label="Image Prompt", format="png", image_mode="RGBA", type="pil", height=400)
             
-            resolution = gr.Radio(["512", "1024", "1536"], label="Resolution", value="512")
+            resolution = gr.Radio(["512", "1024", "1536"], label="Resolution", value="1024")
             seed = gr.Slider(0, MAX_SEED, label="Seed", value=0, step=1)
             randomize_seed = gr.Checkbox(label="Randomize Seed", value=True)
-            decimation_target = gr.Slider(10000, 500000, label="Decimation Target", value=100000, step=10000)
+            decimation_target = gr.Slider(100000, 1000000, label="Decimation Target", value=500000, step=10000)
             texture_size = gr.Slider(1024, 4096, label="Texture Size", value=2048, step=1024)
+            
+            generate_btn = gr.Button("Generate")
                 
             with gr.Accordion(label="Advanced Settings", open=False):                
                 gr.Markdown("Stage 1: Sparse Structure Generation")
@@ -296,22 +547,20 @@ with gr.Blocks(delete_cache=(600, 600)) as demo:
                     tex_slat_sampling_steps = gr.Slider(1, 50, label="Sampling Steps", value=12, step=1)
                     tex_slat_rescale_t = gr.Slider(1.0, 6.0, label="Rescale T", value=3.0, step=0.1)                
 
-            generate_btn = gr.Button("Generate")
-
         with gr.Column(scale=10):
             with gr.Walkthrough(selected=0) as walkthrough:
                 with gr.Step("Preview", id=0):
-                    preview_output = gr.Gallery(label="3D Asset Preview", height=800, show_label=True, preview=True)
+                    preview_output = gr.HTML(empty_html, label="3D Asset Preview", show_label=True, container=True, js_on_load="modify_html_container()")
                     extract_btn = gr.Button("Extract GLB")
                 with gr.Step("Extract", id=1):
-                    glb_output = gr.Model3D(label="Extracted GLB", height=800, show_label=True, display_mode="solid", clear_color=(0.25, 0.25, 0.25, 1.0))
+                    glb_output = gr.Model3D(label="Extracted GLB", height=724, show_label=True, display_mode="solid", clear_color=(0.25, 0.25, 0.25, 1.0))
                     download_btn = gr.DownloadButton(label="Download GLB")
                     
         with gr.Column(scale=1, min_width=172):
             examples = gr.Examples(
                 examples=[
-                    f'assets/example_images/{image}'
-                    for image in os.listdir("assets/example_images")
+                    f'assets/example_image/{image}'
+                    for image in os.listdir("assets/example_image")
                 ],
                 inputs=[image_prompt],
                 fn=preprocess_image,
@@ -361,15 +610,33 @@ with gr.Blocks(delete_cache=(600, 600)) as demo:
 
 # Launch the Gradio app
 if __name__ == "__main__":
+    os.makedirs(TMP_DIR, exist_ok=True)
+
+    # Construct ui components
+    btn_img_base64_strs = {}
+    for i in range(len(MODES)):
+        icon = Image.open(MODES[i]['icon'])
+        MODES[i]['icon_base64'] = image_to_base64(icon)
+
     rmbg_client = Client("briaai/BRIA-RMBG-2.0")
     pipeline = Trellis2ImageTo3DPipeline.from_pretrained('microsoft/TRELLIS.2-4B')
     pipeline.rembg_model = None
     pipeline.low_vram = False
     pipeline.cuda()
     
-    envmap = EnvMap(torch.tensor(
-        cv2.cvtColor(cv2.imread('assets/hdri/forest.exr', cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB),
-        dtype=torch.float32, device='cuda'
-    ))
+    envmap = {
+        'forest': EnvMap(torch.tensor(
+            cv2.cvtColor(cv2.imread('assets/hdri/forest.exr', cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB),
+            dtype=torch.float32, device='cuda'
+        )),
+        'sunset': EnvMap(torch.tensor(
+            cv2.cvtColor(cv2.imread('assets/hdri/sunset.exr', cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB),
+            dtype=torch.float32, device='cuda'
+        )),
+        'courtyard': EnvMap(torch.tensor(
+            cv2.cvtColor(cv2.imread('assets/hdri/courtyard.exr', cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB),
+            dtype=torch.float32, device='cuda'
+        )),
+    }
     
-    demo.launch(css=css)
+    demo.launch(css=css, head=head)

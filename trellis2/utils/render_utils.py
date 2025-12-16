@@ -97,11 +97,11 @@ def render_multiview(sample, resolution=512, nviews=30):
     return res['color'], extrinsics, intrinsics
 
 
-def render_snapshot(samples, resolution=512, bg_color=(0, 0, 0), offset=(-16 / 180 * np.pi, 20 / 180 * np.pi), r=10, fov=8, **kwargs):
-    yaw = [0, np.pi/2, np.pi, 3*np.pi/2]
+def render_snapshot(samples, resolution=512, bg_color=(0, 0, 0), offset=(-16 / 180 * np.pi, 20 / 180 * np.pi), r=10, fov=8, nviews=4, **kwargs):
+    yaw = np.linspace(0, 2 * np.pi, nviews, endpoint=False)
     yaw_offset = offset[0]
     yaw = [y + yaw_offset for y in yaw]
-    pitch = [offset[1] for _ in range(4)]
+    pitch = [offset[1] for _ in range(nviews)]
     extrinsics, intrinsics = yaw_pitch_r_fov_to_extrinsics_intrinsics(yaw, pitch, r, fov)
     return render_frames(samples, extrinsics, intrinsics, {'resolution': resolution, 'bg_color': bg_color}, **kwargs)
 
