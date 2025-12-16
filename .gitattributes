@@ -120,3 +120,8 @@ assets/hdri/interior.exr filter=lfs diff=lfs merge=lfs -text
 assets/hdri/night.exr filter=lfs diff=lfs merge=lfs -text
 assets/hdri/sunrise.exr filter=lfs diff=lfs merge=lfs -text
 assets/hdri/sunset.exr filter=lfs diff=lfs merge=lfs -text
+assets/example_image/130c2b18f1651a70f8aa15b2c99f8dba29bb943044d92871f9223bd3e989e8b1.webp filter=lfs diff=lfs merge=lfs -text
+assets/example_image/26717a7dad644a5cf7554e8e6d06cf82d3dd9bbae31620b36cc7eb38b8de7ac9.webp filter=lfs diff=lfs merge=lfs -text
+assets/example_image/65433d02fc56dae164719ec29cb9646c0383aa1d0e24f0bb592899f08428d68e.webp filter=lfs diff=lfs merge=lfs -text
+assets/example_image/e4d6b2f3a18c3e0f5146a5b40cda6c95d7f69372b2e741c023e5ec9661deda2b.webp filter=lfs diff=lfs merge=lfs -text
+assets/example_image/ebd09565cf0b6593aced573dffdfff34915aa359c60ec5dd0b30cd91a7f153c8.webp filter=lfs diff=lfs merge=lfs -text
