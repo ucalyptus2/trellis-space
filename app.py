@@ -87,7 +87,6 @@ css = """
     transform: unset !important;
 }
 
-
 /* Previewer */
 .previewer-container {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -185,6 +184,17 @@ css = """
 .previewer-container input[type=range]::-webkit-slider-thumb:hover {
     transform: scale(1.2);
 }
+
+/* Overwrite Previewer Block Style */
+.gradio-container .padded:has(.previewer-container) {
+    padding: 0 !important;
+}
+
+.gradio-container:has(.previewer-container) [data-testid="block-label"] {
+    position: absolute;
+    top: 0;
+    left: 0;
+}
 """
 
 
@@ -234,21 +244,6 @@ head = """
     // --- Action: Slider Change ---
     function onSliderChange(val) {
         refreshView(-1, parseInt(val));
-    }
-    
-    function modify_html_container() {
-        const container = document.querySelector('.previewer-container');
-        const html_container = container.parentNode.parentNode.parentNode;
-        
-        // Remove class padded
-        html_container.classList.remove('padded');
-        
-        // Search for data-testid="block-label" in html_container's children
-        const status_tracker = html_container.querySelector('[data-testid="block-label"]');
-        if (status_tracker) {
-            // Add class float
-            status_tracker.classList.add('float');
-        }
     }
 </script>
 """
@@ -550,7 +545,7 @@ with gr.Blocks(delete_cache=(600, 600)) as demo:
         with gr.Column(scale=10):
             with gr.Walkthrough(selected=0) as walkthrough:
                 with gr.Step("Preview", id=0):
-                    preview_output = gr.HTML(empty_html, label="3D Asset Preview", show_label=True, container=True, js_on_load="modify_html_container()")
+                    preview_output = gr.HTML(empty_html, label="3D Asset Preview", show_label=True, container=True)
                     extract_btn = gr.Button("Extract GLB")
                 with gr.Step("Extract", id=1):
                     glb_output = gr.Model3D(label="Extracted GLB", height=724, show_label=True, display_mode="solid", clear_color=(0.25, 0.25, 0.25, 1.0))
