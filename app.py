@@ -492,6 +492,7 @@ def extract_glb(
         texture_size=texture_size,
         remesh=True,
         remesh_band=1,
+        remesh_project=0,
         use_tqdm=True,
     )
     now = datetime.now()
