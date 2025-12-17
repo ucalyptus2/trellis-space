@@ -504,7 +504,7 @@ def image_to_3d(
     return state, full_html
 
 
-@spaces.GPU(duration=60)
+@spaces.GPU(duration=120)
 def extract_glb(
     state: dict,
     decimation_target: int,
