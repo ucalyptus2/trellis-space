@@ -7,9 +7,14 @@ from PIL import Image
 
 class BiRefNet:
     def __init__(self, model_name: str = "ZhengPeng7/BiRefNet"):
+        # Load model without meta tensors to avoid .item() error
+        # Setting low_cpu_mem_usage=False prevents automatic meta tensor usage
         self.model = AutoModelForImageSegmentation.from_pretrained(
-            model_name, trust_remote_code=True
-        )
+            model_name,
+            trust_remote_code=True,
+            torch_dtype=torch.float16,
+            low_cpu_mem_usage=False
+        ).cuda()
         self.model.eval()
         self.transform_image = transforms.Compose(
             [
