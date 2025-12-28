@@ -25244,6 +25244,66 @@
                 "reg_inc_consumer": 0,
                 "maxnreg": null,
                 "pre_hook": null
+            },
+            "(22, 2275639, 6, 8, 'torch.float32', 'torch.uint32', 'torch.float32', 'torch.float32')": {
+                "kwargs": {
+                    "BM": 16,
+                    "BK": 8
+                },
+                "num_warps": 2,
+                "num_ctas": 1,
+                "num_stages": 2,
+                "num_buffers_warp_spec": 0,
+                "num_consumer_groups": 0,
+                "reg_dec_producer": 0,
+                "reg_inc_consumer": 0,
+                "maxnreg": null,
+                "pre_hook": null
+            },
+            "(21, 1716553, 6, 8, 'torch.float32', 'torch.uint32', 'torch.float32', 'torch.float32')": {
+                "kwargs": {
+                    "BM": 16,
+                    "BK": 8
+                },
+                "num_warps": 2,
+                "num_ctas": 1,
+                "num_stages": 2,
+                "num_buffers_warp_spec": 0,
+                "num_consumer_groups": 0,
+                "reg_dec_producer": 0,
+                "reg_inc_consumer": 0,
+                "maxnreg": null,
+                "pre_hook": null
+            },
+            "(22, 2235151, 6, 8, 'torch.float32', 'torch.uint32', 'torch.float32', 'torch.float32')": {
+                "kwargs": {
+                    "BM": 16,
+                    "BK": 8
+                },
+                "num_warps": 2,
+                "num_ctas": 1,
+                "num_stages": 2,
+                "num_buffers_warp_spec": 0,
+                "num_consumer_groups": 0,
+                "reg_dec_producer": 0,
+                "reg_inc_consumer": 0,
+                "maxnreg": null,
+                "pre_hook": null
+            },
+            "(22, 2293850, 6, 8, 'torch.float32', 'torch.uint32', 'torch.float32', 'torch.float32')": {
+                "kwargs": {
+                    "BM": 16,
+                    "BK": 8
+                },
+                "num_warps": 2,
+                "num_ctas": 1,
+                "num_stages": 2,
+                "num_buffers_warp_spec": 0,
+                "num_consumer_groups": 0,
+                "reg_dec_producer": 0,
+                "reg_inc_consumer": 0,
+                "maxnreg": null,
+                "pre_hook": null
             }
         },
         "flex_gemm.kernels.triton.spconv.sparse_submanifold_conv_bwd_implicit_gemm.sparse_submanifold_conv_bwd_input_implicit_gemm_kernel": {
