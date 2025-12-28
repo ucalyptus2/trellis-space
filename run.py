@@ -41,14 +41,49 @@ import o_voxel
 MAX_SEED = np.iinfo(np.int32).max
 
 
-def load_pipeline(device='cuda'):
+def get_best_gpu():
+    """
+    Find the GPU with the most free memory.
+
+    Returns:
+        int: GPU device ID with most free memory
+    """
+    if not torch.cuda.is_available():
+        return 0
+
+    num_gpus = torch.cuda.device_count()
+    max_free_memory = 0
+    best_gpu = 0
+
+    for gpu_id in range(num_gpus):
+        torch.cuda.set_device(gpu_id)
+        free_memory = torch.cuda.get_device_properties(gpu_id).total_memory - torch.cuda.memory_allocated(gpu_id)
+        print(f"GPU {gpu_id}: {free_memory / 1024**3:.2f} GB free")
+        if free_memory > max_free_memory:
+            max_free_memory = free_memory
+            best_gpu = gpu_id
+
+    print(f"Selected GPU {best_gpu} with {max_free_memory / 1024**3:.2f} GB free")
+    return best_gpu
+
+
+def load_pipeline(gpu_id=None):
     """
     Load and initialize the Trellis2 pipeline and background removal model.
+
+    Args:
+        gpu_id: GPU device ID to use. If None, auto-selects GPU with most free memory.
 
     Returns:
         Tuple[Trellis2ImageTo3DPipeline, BiRefNet]: The pipeline and rembg model
     """
-    print("Loading TRELLIS.2 pipeline...")
+    # Auto-select best GPU if not specified
+    if gpu_id is None:
+        gpu_id = get_best_gpu()
+
+    device = f'cuda:{gpu_id}'
+    torch.cuda.set_device(gpu_id)
+    print(f"Loading TRELLIS.2 pipeline on GPU {gpu_id}...")
 
     # Load the pipeline, but catch the rembg error
     try:
@@ -100,7 +135,7 @@ def load_pipeline(device='cuda'):
     print("Loading BiRefNet for background removal...")
     try:
         rembg_model = BiRefNet(model_name="ZhengPeng7/BiRefNet")
-        rembg_model.cuda()
+        rembg_model.to(device)
         # Set pipeline to use our rembg model
         pipeline.rembg_model = rembg_model
     except Exception as e:
@@ -109,13 +144,13 @@ def load_pipeline(device='cuda'):
         rembg_model = None
         pipeline.rembg_model = None
 
-    # Disable low_vram mode for faster processing (we have 8x A100 GPUs)
+    # Disable low_vram mode - we want to use GPU memory, not offload to CPU
     pipeline.low_vram = False
 
-    # Move pipeline to GPU
-    pipeline.cuda()
+    # Move pipeline to the selected GPU
+    pipeline.to(device)
 
-    print("Pipeline loaded successfully!")
+    print(f"Pipeline loaded successfully on GPU {gpu_id}!")
     return pipeline, rembg_model
 
 
